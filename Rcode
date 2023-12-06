@@ -1,0 +1,147 @@
+
+## import required packages ##
+library(tidyverse)
+library(dplyr)
+library(janitor)
+library(ggplot2)
+library(lubridate)
+
+##import datasets 
+Jan_2021 <- read_csv("202101-divvy-tripdata.csv")
+Feb_2021 <- read_csv("202102-divvy-tripdata.csv")
+Mar_2021 <- read_csv("202103-divvy-tripdata.csv")
+Apr_2021 <- read_csv("202104-divvy-tripdata.csv")
+May_2021 <- read_csv("202105-divvy-tripdata.csv")
+Jun_2021 <- read_csv("202106-divvy-tripdata.csv")
+Jul_2021 <- read_csv("202107-divvy-tripdata.csv")
+Aug_2021 <- read_csv("202108-divvy-tripdata.csv")
+Sep_2021 <- read_csv("202109-divvy-tripdata.csv")
+Oct_2021 <- read_csv("202110-divvy-tripdata.csv")
+Nov_2021 <- read_csv("202111-divvy-tripdata.csv")
+Dec_2021 <- read_csv("202112-divvy-tripdata.csv")
+
+
+##ensure all dataframes are compatible for stacking
+compare_df_cols(Jan_2021, Feb_2021, Mar_2021, Apr_2021, May_2021, Jun_2021, 
+                Jul_2021, Aug_2021, Sep_2021, Oct_2021, Nov_2021, Dec_2021)
+
+
+##stack the data 
+all_trips2021 <- bind_rows(Jan_2021,Feb_2021, Mar_2021, Apr_2021, May_2021, 
+                           Jun_2021, Jul_2021, Aug_2021, Sep_2021, Oct_2021, 
+                           Nov_2021, Dec_2021)
+
+##preview the data
+head(all_trips2021)
+colnames(all_trips2021)
+nrow(all_trips2021)
+str(all_trips2021)
+dim(all_trips2021)
+summary(all_trips2021)
+
+##determine if the data contains missing values 
+apply(is.na(all_trips2021), 2, sum)
+
+##rename bike type column and rider type column for clarity
+all_trips2021 <- all_trips2021 %>%
+  rename(bike_type = rideable_type, rider_type = member_casual)
+
+##inspect the nominal columns for consistency
+table(all_trips2021$bike_type)
+table(all_trips2021$rider_type)
+
+##calculate ride length in seconds
+all_trips2021 <- transform(
+  all_trips2021, ride_length = difftime(ended_at,started_at))
+
+##calculate ride length in minutes
+all_trips2021 <- transform(
+  all_trips2021, ride_length_minutes = as.numeric(round(difftime(ended_at,started_at, units = 'mins'),2)))
+
+##calculate ride length in hours
+all_trips2021 <- transform(
+  all_trips2021, ride_length_hours = as.numeric(difftime(ended_at,started_at, units = 'hours')))
+
+##separate date into date components and convert day of the week to a numeric
+all_trips2021$weekday <- weekdays(all_trips2021$started_at)
+all_trips2021$month <- months(all_trips2021$started_at)
+all_trips2021$day <- mday(all_trips2021$started_at)
+all_trips2021$year <- year(all_trips2021$started_at)
+all_trips2021$wday_numeric <- wday(all_trips2021$started_at)
+
+
+##all trips that start at HQ QR need to be filtered as they indicate bikes that were in for repair
+##determine if any bikes started at HQ QR
+all_trips2021 %>% 
+  filter(grepl('HQ QR',start_station_name)) 
+
+
+##drop all rides less than 0 seconds
+all_trips_2021_clean <-filter(all_trips2021, ride_length_minutes > 0)
+
+
+##convert weekday to a factor for correct day of week order
+all_trips_2021_clean$weekday_factor <- factor(all_trips_2021_clean$weekday, c("Sunday","Monday","Tuesday", 
+                                                        "Wednesday", "Thursday", "Friday", 
+                                                        "Saturday"))
+
+##create a df with summary stats for rider type and bike type by day of the week 
+summary_stats_day_of_week_2021 <- all_trips_2021_clean %>%                               
+  group_by(weekday_factor, bike_type, rider_type) %>% 
+  summarize(min = min(ride_length_minutes),
+            q1 = quantile(ride_length_minutes, 0.25),
+            median = median(ride_length_minutes),
+            mean = mean(ride_length_minutes),
+            q3 = quantile(ride_length_minutes, 0.75),
+            max = max(ride_length_minutes),
+            number_of_rides = n())
+
+
+##view the summary stats 
+print(summary_stats_day_of_week_2021)
+
+##visualize the mean ride length by day of the week
+summary_stats_day_of_week_2021 %>%
+  ggplot(aes(x = weekday_factor, y = mean)) +
+  geom_col(position = "dodge")
+
+##visualize the number of rides by day of the week
+summary_stats_day_of_week_2021 %>%
+  ggplot(aes(x = weekday_factor, y = number_of_rides)) +
+  geom_col(position = "dodge")
+
+##visualize the number of rides by day of the week and bike type
+summary_stats_day_of_week_2021 %>%  
+  ggplot(aes(x = weekday_factor, y = number_of_rides, 
+             fill = bike_type)) + 
+  geom_col(position = "dodge")
+
+##visualize number of rides by day of the week and rider type
+summary_stats_day_of_week_2021 %>%  
+  ggplot(aes(x = weekday_factor, y = number_of_rides, 
+             fill = rider_type)) + 
+  geom_col(position = "dodge")
+
+##visualize mean trip length by day of the week and bike type
+summary_stats_day_of_week_2021 %>%  
+  ggplot(aes(x = weekday_factor, y = mean, 
+             fill = bike_type)) + 
+  geom_col(position = "dodge")
+
+##visualize mean trip length by day of the week and rider type
+summary_stats_day_of_week_2021 %>%  
+  ggplot(aes(x = weekday_factor, y = mean, 
+             fill = rider_type)) + 
+  geom_col(position = "dodge")
+
+##visualize mean trip length by bike type and member type
+summary_stats_day_of_week_2021 %>%  
+  ggplot(aes(x = weekday_factor, y = mean, 
+             fill = bike_type)) + 
+  geom_col(position = "dodge")+  facet_grid(~rider_type)
+
+##visualize number of rides by bike type and member type
+summary_stats_day_of_week_2021 %>%  
+  ggplot(aes(x = weekday_factor, y = number_of_rides, 
+             fill = bike_type)) + 
+  geom_col(position = "dodge")+  facet_grid(~rider_type)
